@@ -1,0 +1,10 @@
+{
+  "jira": {
+    "base_url": "https://jira.ecarxgroup.com",
+    "auth": {
+      "type": "bearer",
+      "token_env": "JIRA_TOKEN"
+    },
+    "default_jql": "assignee = currentUser() AND issuetype = Bug AND statusCategory != Done ORDER BY priority DESC, updated DESC"
+  }
+}

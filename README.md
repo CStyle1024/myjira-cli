@@ -1,0 +1,107 @@
+# myjira-cli
+
+独立的 Jira CLI，不依赖 issue-resolver 或兄弟项目源码。Python >=3.8，Linux，运行时使用标准库。
+
+## 安装
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install wheel
+python -m pip install --no-build-isolation .
+myjira-cli --help
+myjira-cli --tool-info
+```
+
+也可从源码执行 `PYTHONPATH=src python3 -m myjira_cli --help`。分发包与命令同名，均为 myjira-cli。
+
+## 配置
+
+使用 `--config /absolute/path/config.json`，或设置 `ISSUE_RESOLVER_CONFIG`；默认读取当前目录的 project.json。可使用完整工作流配置，也可只包含 jira 服务配置。认证使用环境变量或文件引用，不把凭据写进 JSON。
+
+```bash
+cp examples/jira.json jira.local.json
+# 填写服务地址及认证引用后运行
+myjira-cli --config jira.local.json doctor
+```
+
+## 查询与归档
+
+全局选项可放在子命令之前或之后；默认输出 JSON。
+
+```bash
+myjira-cli --config /path/to/project.json doctor
+myjira-cli --config /path/to/project.json me
+myjira-cli --config /path/to/project.json issues list --assignee me
+myjira-cli --config /path/to/project.json issues list --jql 'project = DEMO AND statusCategory != Done'
+myjira-cli --config /path/to/project.json issue get DEMO-123
+myjira-cli --config /path/to/project.json issue comments DEMO-123
+myjira-cli --config /path/to/project.json issue transitions DEMO-123
+myjira-cli --config /path/to/project.json issue changelog DEMO-123
+myjira-cli --config /path/to/project.json issue fetch DEMO-123 --output-dir /path/to/bugs/DEMO-123
+myjira-cli --config /path/to/project.json attachment download 12345 --output-dir /path/to/attachments
+```
+
+`doctor` 只检查配置、身份和可访问性，不宣称具有写权限。搜索和备注自动分页。Jira v2 expand 返回的历史若被截断或缺失，`changelog.complete=false`，归档产生明确警告。
+
+`fetch` 保存原始 issue、完整备注和历史元数据到 `issue/snapshots/<hash>.json`，最新索引为 `issue/manifest.json`，人读摘要为 `issue.md`。附件保存为 `attachments/<id>/<sha256>.bin`，原始文件名/MIME 等原始元数据保留在快照中，文件名与摘要等下载记录位于每个 ID 的 `record.json`。同名附件不会覆盖；缓存复核摘要，下载大小不一致不会标记成功。部分附件失败时输出 FAILED 及逐项失败，重跑可补齐；先前快照保留。
+
+## 状态转换、评论和指派
+
+写命令缺省只预览；执行需显式 `--execute --operation-id ID`。本工具不决定 bug 的业务生命周期。
+
+```bash
+# 先查询允许的转换；ID 和必填字段由当前 issue 决定。
+myjira-cli --config /path/to/project.json issue transitions DEMO-123
+myjira-cli --config /path/to/project.json issue transition DEMO-123 --transition-id 21 --preview
+myjira-cli --config /path/to/project.json issue transition DEMO-123 --transition-id 21 --fields-file /path/to/fields.json --execute --operation-id demo-123-start-001
+
+# fields.json 为字段值对象，例如 {"resolution": {"id": "1"}}；不要猜测字段和 ID。
+# 评论来自 UTF-8 文件；--body-file - 则从 stdin 读取。
+myjira-cli --config /path/to/project.json issue comment DEMO-123 --body-file /path/to/comment.txt --preview
+myjira-cli --config /path/to/project.json issue comment DEMO-123 --body-file /path/to/comment.txt --execute --operation-id demo-123-comment-001
+
+# --user 是 Jira Server 的 username，不是显示名或 Cloud accountId。
+myjira-cli --config /path/to/project.json issue assign DEMO-123 --user tester --preview
+myjira-cli --config /path/to/project.json issue assign DEMO-123 --user tester --execute --operation-id demo-123-assign-001
+```
+
+评论执行时添加 `[jira-cli-operation:…]` 关联标记，预览会说明这一点。成功写入后回读远端。状态转换检查允许转换及必填字段；指派先检查目标用户可分配。
+
+回执默认保存在 `${XDG_STATE_HOME:-~/.local/state}/issue-resolver/actions/jira`，也可通过 `--state-dir`、jira.state_dir 或顶层 state_dir 指定。一个自动化流程应使用固定的绝对目录并保留它，不能把回执当可随意删除的缓存。文件权限为 0600。
+
+同 ID/同输入重复执行会复用回执，同 ID/不同输入报冲突。超时或中断返回 UNKNOWN，不自动重发写请求；使用**原命令、原 ID、原输入、原回执目录**再次调用只做远端对账。评论可凭精确正文、标记和作者确认；状态/指派仅当前值符合期望不足以证明是本次操作成功，因此可能一直保持 UNKNOWN。此时人工检查 Jira 历史并决定下一步，勿换新 ID 盲目重试。
+
+这是一份保守的动作台账，不保证跨系统 exactly-once。读取检查与远端写入之间仍可能有其他人修改 issue，工具会核对写入后的状态，不提供 Jira 侧的原子业务锁。
+
+## 机器调用契约
+
+`--format json`（默认）stdout 只含一个结果对象；`--format text` 以缩进 JSON 便于人工查看。帮助和版本信息为常规文本。错误不会回显原始异常、凭据或服务端登录页。
+
+```json
+{"schema_version": 1, "status": "SUCCESS", "data": {}, "error": null}
+```
+
+写入结果另含 operation_id、receipt_path。status 为 SUCCESS / FAILED / UNKNOWN；不要仅根据退出码或 stderr 判断某次未知写入是否发生。
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 成功，包括只读预览 |
+| 2 | 参数/配置错误 |
+| 3 | 认证或权限错误 |
+| 4 | 冲突或前置条件不满足 |
+| 5 | 已知远端失败/归档部分失败 |
+| 6 | 写入结果未知，需对账 |
+| 7 | 本地错误 |
+
+
+`--tool-info` 不读取配置或连接服务，输出 distribution、command、version、result_schema，供调用程序识别本项目及兼容契约。此接口不是程序签名或安全认证。
+
+## 验证与构建
+
+```bash
+PYTHONPATH=src python3 -m unittest discover -s tests -v
+python -m pip wheel --no-deps --no-build-isolation --wheel-dir dist .
+```
+
+测试使用本地 HTTP 服务和临时 Git 仓库；真实服务的写操作不属于拆分验收。默认操作回执目录继续使用 ~/.local/state/issue-resolver/actions/jira（遵守 XDG_STATE_HOME），升级时不要删除。UNKNOWN 必须使用原 operation ID 与输入对账。

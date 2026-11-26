@@ -9,6 +9,7 @@ from typing import List, Optional
 from . import __version__
 from .common import ToolInfoAction, CliError, EXIT_CODES, Parser, load_config, result
 from .http import Client
+from .config_init import add_commands, config_path, initialize
 from .jira import Jira, DEFAULT_JQL
 
 
@@ -16,8 +17,9 @@ def parser():
     p = Parser(prog='myjira-cli', allow_abbrev=False)
     p.add_argument('--version', action='version', version='myjira-cli ' + __version__)
     p.add_argument('--tool-info', action=ToolInfoAction, nargs=0, const=json.dumps({'schema_version': 1, 'distribution': 'myjira-cli', 'command': 'myjira-cli', 'version': __version__, 'result_schema': 1}))
-    p.set_defaults(config=os.environ.get('ISSUE_RESOLVER_CONFIG', 'project.json'), format='json', timeout=30, state_dir=None)
+    p.set_defaults(config=None, format='json', timeout=30, state_dir=None)
     sub = p.add_subparsers(dest='command', required=True)
+    add_commands(sub)
     sub.add_parser('doctor', help='Read-only configuration and authentication probe')
     sub.add_parser('me', help='Current Jira identity')
     issues = sub.add_parser('issues').add_subparsers(dest='verb', required=True)
@@ -109,7 +111,8 @@ def main(argv: Optional[List[str]] = None) -> int:
         args = parser().parse_args(argv)
         if args.command == 'issue' and args.verb in ('transition', 'comment', 'assign') and args.execute and not args.operation_id:
             raise CliError('INPUT', '--execute requires --operation-id for result reconciliation.')
-        output = dispatch(args, load_config(args.config))
+        output = (initialize(args) if args.command == 'config'
+                  else dispatch(args, load_config(config_path(args.config))))
         code = 0 if output['status'] == 'SUCCESS' else (6 if output['status'] == 'UNKNOWN' else EXIT_CODES.get((output.get('error') or {}).get('code'), 5))
     except CliError as exc:
         code = EXIT_CODES.get(exc.code, 7)

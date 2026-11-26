@@ -19,7 +19,7 @@ class Parser(argparse.ArgumentParser):
         kwargs.setdefault('allow_abbrev', False)
         super().__init__(*args, **kwargs)
         self.add_argument('--config', default=argparse.SUPPRESS, help='Project JSON file (or ISSUE_RESOLVER_CONFIG)')
-        self.add_argument('--format', choices=('json', 'text'), default=argparse.SUPPRESS)
+        self.add_argument('--format', choices=('json', 'text', 'yaml'), default=argparse.SUPPRESS)
         self.add_argument('--timeout', type=float, default=argparse.SUPPRESS)
         self.add_argument('--state-dir', default=argparse.SUPPRESS, help='Local operation records')
 

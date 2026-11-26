@@ -124,7 +124,12 @@ def main(argv: Optional[List[str]] = None) -> int:
     except Exception:
         # Never echo exceptions from credentials, remote content or local config.
         code, output = 7, result('FAILED', error={'code': 'LOCAL_ERROR', 'message': 'Local operation failed. Check configuration, input and file permissions.'})
-    print(json.dumps(output, ensure_ascii=False, indent=2 if args and args.format == 'text' else None))
+    if args and args.format == 'yaml':
+        import yaml
+
+        print(yaml.safe_dump(output, allow_unicode=True, sort_keys=False), end='')
+    else:
+        print(json.dumps(output, ensure_ascii=False, indent=2 if args and args.format == 'text' else None))
     return code
 
 

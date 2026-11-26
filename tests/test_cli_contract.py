@@ -4,8 +4,10 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import yaml
+
 from myjira_cli.cli import main
-from myjira_cli.common import CliError, load_config, write_json_atomic
+from myjira_cli.common import CliError, load_config, result, write_json_atomic
 from tests.helpers import invoke, Opener
 
 
@@ -16,6 +18,28 @@ class CliContractTests(unittest.TestCase):
         self.assertEqual(json.loads(out)['status'], 'FAILED')
         self.assertEqual(json.loads(out)['schema_version'], 1)
         self.assertNotIn('Traceback', out + err)
+
+    def test_yaml_preserves_full_doctor_response(self):
+        response = result('SUCCESS', {'identity': {'name': 'cong.sui',
+                                                  'displayName': '隋聪',
+                                                  'active': True,
+                                                  'groups': {'size': 0, 'items': []}},
+                                      'write_permissions': 'not_checked'})
+        with patch('myjira_cli.cli.load_config', return_value={}), patch(
+                'myjira_cli.cli.dispatch', return_value=response):
+            json_code, json_out, _ = invoke(main, ['doctor'])
+            yaml_code, yaml_out, _ = invoke(main, ['doctor', '--format', 'yaml'])
+        self.assertEqual((json_code, yaml_code), (0, 0))
+        self.assertTrue(yaml_out.startswith('schema_version: 1\n'))
+        self.assertEqual(yaml.safe_load(yaml_out), json.loads(json_out))
+        self.assertEqual(yaml.safe_load(yaml_out), response)
+
+    def test_yaml_reports_runtime_errors(self):
+        with patch('myjira_cli.cli.load_config', side_effect=CliError('INPUT', 'Bad config.')):
+            code, output, _ = invoke(main, ['doctor', '--format', 'yaml'])
+        self.assertEqual(code, 2)
+        self.assertEqual(yaml.safe_load(output), result(
+            'FAILED', error={'code': 'INPUT', 'message': 'Bad config.', 'details': {}}))
 
     def test_credentials_are_redacted(self):
         with tempfile.TemporaryDirectory() as d:

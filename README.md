@@ -1,6 +1,6 @@
 # myjira-cli
 
-独立的 Jira CLI，不依赖 issue-resolver 或兄弟项目源码。Python >=3.8，Linux，运行时使用标准库。
+独立的 Jira CLI，不依赖 issue-resolver 或兄弟项目源码。Python >=3.8，Linux，YAML 输出由 PyYAML 提供。
 
 ## 安装
 
@@ -104,7 +104,7 @@ myjira-cli --config /path/to/project.json issue assign DEMO-123 --user tester --
 
 ## 机器调用契约
 
-`--format json`（默认）stdout 只含一个结果对象；`--format text` 以缩进 JSON 便于人工查看。帮助和版本信息为常规文本。错误不会回显原始异常、凭据或服务端登录页。
+`--format json`（默认）stdout 只含一个结果对象；`--format text` 以缩进 JSON 便于人工查看。`--format yaml` 将同一个结果对象完整序列化为 YAML，例如 `myjira-cli doctor --format yaml`。帮助和版本信息为常规文本。错误不会回显原始异常、凭据或服务端登录页。
 
 ```json
 {"schema_version": 1, "status": "SUCCESS", "data": {}, "error": null}

@@ -52,7 +52,7 @@ class SafeRedirect(HTTPRedirectHandler):
 
 
 class Client:
-    def __init__(self, base_url: str, auth: dict, timeout: float, transport=None):
+    def __init__(self, base_url: str, auth: dict, timeout: float, transport=None, *, bearer_token=None):
         transport = {} if transport is None else transport
         if (not isinstance(transport, dict) or set(transport) - {'allow_http', 'allow_http_credentials'}
                 or any(type(value) is not bool for value in transport.values())):
@@ -78,7 +78,10 @@ class Client:
                 and auth_type != 'none' and not transport.get('allow_http_credentials', False)):
             raise CliError('INPUT', 'Credentials over remote HTTP require allow_http_credentials=true; HTTP is unencrypted.')
         if auth_type == 'bearer':
-            self.authorization = 'Bearer ' + secret(auth, 'token')
+            token = secret(auth, 'token') if bearer_token is None else bearer_token
+            if not token.strip() or '\r' in token or '\n' in token:
+                raise CliError('AUTH_REQUIRED', 'Configured credential is missing or invalid.')
+            self.authorization = 'Bearer ' + token
         elif auth_type == 'basic':
             username = auth.get('username') or os.environ.get(auth.get('username_env', ''), '')
             if not isinstance(username, str) or not username or ':' in username or '\n' in username or '\r' in username:

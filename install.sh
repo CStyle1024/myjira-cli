@@ -17,7 +17,7 @@ clone_args=(--depth 1)
 if [[ -n "$ref" ]]; then
     clone_args+=(--branch "$ref")
 fi
-git clone "${clone_args[@]}" -- "${MYJIRA_CLI_REPO:-git@gitlab.meizu.com:cong.sui/myjira-cli.git}" "$install_tmp/myjira-cli"
+git clone "${clone_args[@]}" -- "${MYJIRA_CLI_REPO:-https://github.com/CStyle1024/myjira-cli.git}" "$install_tmp/myjira-cli"
 uv tool install --reinstall "$install_tmp/myjira-cli"
 
 uv_bin="$(uv tool dir --bin)"

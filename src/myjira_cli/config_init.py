@@ -1,7 +1,10 @@
 """交互式初始化独立连接配置。"""
+import getpass
 import os
 import re
 import sys
+import tempfile
+import warnings
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -50,10 +53,35 @@ def auth_config():
     raise CliError('INPUT', 'Authentication must be bearer or basic.')
 
 
+def read_pat():
+    # getpass 无法关闭终端回显时会警告并回退，必须在读取前中止。
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter('error', getpass.GetPassWarning)
+            return getpass.getpass('Jira PAT (hidden): ').strip()
+    except (getpass.GetPassWarning, EOFError, OSError):
+        raise CliError('INPUT', 'Cannot read a hidden PAT from this terminal.')
+
+
+def save_pat(directory, token):
+    fd, filename = tempfile.mkstemp(prefix='jira-pat-', dir=str(directory))
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
+            stream.write(token)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        Path(filename).unlink()
+        raise
+    return Path(filename)
+
+
 def add_commands(commands):
     sub = commands.add_parser('config', help='Manage standalone connection configuration')
-    sub.add_subparsers(dest='config_command', required=True).add_parser(
+    init = sub.add_subparsers(dest='config_command', required=True).add_parser(
         'init', help='Verify a connection and save credentials by reference')
+    init.add_argument('--auth-env', action='store_true',
+                      help='Use environment variables instead of hidden PAT input')
 
 
 def initialize(args):
@@ -71,9 +99,10 @@ def initialize(args):
         raise CliError('INPUT', 'Invalid service URL.')
     if parsed.scheme not in ('http', 'https') or not parsed.hostname:
         raise CliError('INPUT', 'Enter an HTTP(S) REST base URL.')
-    auth = auth_config()
+    token = None if args.auth_env else read_pat()
+    auth = auth_config() if args.auth_env else {'type': 'bearer'}
     section = {'base_url': url.rstrip('/'), 'auth': auth}
-    metadata, server = probe(args, section, parsed)
+    metadata, server = probe(args, section, token)
     with file_lock(str(path) + '.lock'):
         config = load_config(str(path)) if path.exists() else {}
         target = target_section(config, server)
@@ -85,14 +114,25 @@ def initialize(args):
             # 重新初始化时以这次验证的传输策略为准。
             if parsed.scheme != 'http':
                 section.pop('transport', None)
+        saved_pat = save_pat(path.parent, token) if token is not None else None
+        if saved_pat is not None:
+            section['auth']['token_file'] = str(saved_pat)
         target[0][target[1]] = section
-        write_json_atomic(str(path), config)
+        try:
+            write_json_atomic(str(path), config)
+        except BaseException:
+            # 原子替换有可能已经发生，只在确认配置未引用新文件时清理。
+            if saved_pat is not None:
+                current = load_config(str(path)) if path.exists() else {}
+                if current.get('jira', {}).get('auth', {}).get('token_file') != str(saved_pat):
+                    saved_pat.unlink()
+            raise
     return result('SUCCESS', {'config': str(path), 'server': server, **metadata})
 
 
-def probe(args, section, parsed):
+def probe(args, section, token):
     from .jira import Jira
-    client = Client(section['base_url'], section['auth'], args.timeout)
+    client = Client(section['base_url'], section['auth'], args.timeout, bearer_token=token)
     identity = Jira(client).me()
     if not any(isinstance(identity.get(key), str) and identity[key]
                for key in ('accountId', 'key', 'name')):

@@ -4,13 +4,13 @@
 
 ## 安装
 
-需要 Bash、Git、`uv` 和 GitLab 仓库访问权限。发布安装脚本后，可执行：
+需要 Bash、Git、`uv` 和 GitHub 仓库访问权限。发布安装脚本后，可执行：
 
 ```bash
-curl -fsSL https://gitlab.meizu.com/cong.sui/myjira-cli/-/raw/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/CStyle1024/myjira-cli/main/install.sh | bash
 ```
 
-已有源码时可直接运行 `bash install.sh`。脚本默认通过 SSH 浅克隆默认分支，使用 `MYJIRA_CLI_REPO` 可指定仓库地址，使用 `MYJIRA_CLI_REF` 可选择分支或标签。安装结束后清理临时源码目录。如果终端找不到命令，运行 `uv tool update-shell` 后重新打开终端。
+已有源码时可直接运行 `bash install.sh`。脚本默认通过 HTTPS 浅克隆 GitHub 仓库的默认分支，使用 `MYJIRA_CLI_REPO` 可指定仓库地址，使用 `MYJIRA_CLI_REF` 可选择分支或标签。安装结束后清理临时源码目录。如果终端找不到命令，运行 `uv tool update-shell` 后重新打开终端。
 
 也可以在源码目录中用 pip 安装：
 
@@ -29,14 +29,16 @@ myjira-cli --tool-info
 
 ### 交互式初始化
 
-在终端中先加载已有的认证环境变量，再运行：
+在终端运行：
 
 ```bash
 myjira-cli config init
 myjira-cli doctor
 ```
 
-向导询问 REST 地址、认证方式和环境变量名。Bearer 需要 token 变量名，Basic 需要用户名和密码或 API token 的变量名。验证成功后配置保存在 `${XDG_CONFIG_HOME:-$HOME/.config}/myjira-cli/config.json`，文件仅保存引用。以后执行命令时仍要提供对应的环境变量。
+向导询问 REST 地址和 Jira PAT。PAT 输入时关闭回显，按 Enter 提交。验证通过后，PAT 保存在独立配置目录下权限为 `600` 的凭据文件里。配置 `${XDG_CONFIG_HOME:-$HOME/.config}/myjira-cli/config.json` 只记录该文件路径。随后运行 `doctor` 时可直接读取凭据。
+
+如果已有环境变量，或需要 Basic 认证，使用 `myjira-cli config init --auth-env`。向导会询问认证方式和环境变量名，后续命令继续从环境读取凭据。
 
 向导通过当前账号和 `serverInfo` 验证连接并探测 Jira 部署类型。服务未报告可识别的类型时，提示手动选择或保留未知。部署类型作为配置信息记录，现有 REST 命令仍使用 Jira API v2。
 
